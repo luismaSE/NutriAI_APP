@@ -34,20 +34,20 @@ def process_image():
 
         # Obtener la imagen de la solicitud
         image = request.files['image']
-        image_bytes = image.read()
-        
-        # Verificar el tipo de archivo
-        if image.filename == '':
+
+        # Verificar el tipo de archivo y validar la extensión
+        if not image.filename:
             return jsonify({'error': 'Nombre de archivo vacío'}), 400
-        if not image.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
+        allowed_extensions = {'.png', '.jpg', '.jpeg', '.webp'}
+        if not any(image.filename.lower().endswith(ext) for ext in allowed_extensions):
             return jsonify({'error': 'Formato de imagen no admitido'}), 400
 
-        # Convertir los bytes de la imagen en un array numpy
-        nparr = np.frombuffer(image_bytes, np.uint8)
+        # Leer los bytes de la imagen
+        image_bytes = image.read()
 
         # Decodificar la imagen utilizando OpenCV
-        image_cv = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        
+        image_cv = cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
+
         # Verificar si la decodificación fue exitosa
         if image_cv is None:
             return jsonify({'error': 'No se pudo decodificar la imagen'}), 500
@@ -55,24 +55,30 @@ def process_image():
         # Enviar la imagen al API
         files = {'image': image_bytes}
         response = requests.post(NUTRI_API_URL, files=files)
-        
+
+        # Verificar el estado de la respuesta del API
+        if response.status_code != 200:
+            return jsonify({'error': 'Error al procesar la imagen en el API'}), 500
+
         # Procesar la respuesta del API
         response_data = response.json()
+        if 'error' in response_data:
+            return jsonify({'error': response_data['error']}), 500
+
+        # Procesar la información del resultado
         macros_dict = json.loads(response_data['macros'])
         ingredients, cautions, diet_labels, health_labels = food_formater.process_json(macros_dict)
         meal = Meal(ingredients, cautions, diet_labels, health_labels)
         meals[meal.id] = meal
-                
+
         result = json.loads(response_data['result'])
-        
-        # Dibujar las cajas delimitadoras en la imagen
-        mod_image = image_handler.draw_boxes(image_cv, result)
+        mod_image = image_handler.draw_polygons(image_cv, result)
 
         # Codificar la imagen modificada como base64
         _, img_encoded = cv2.imencode('.jpg', mod_image)
         img_base64 = base64.b64encode(img_encoded).decode('utf-8')
 
-        return jsonify({'meal': meal.to_json(),'image': img_base64}), 200
+        return jsonify({'meal': meal.to_json(), 'image': img_base64}), 200
     except Exception as e:
         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
 
@@ -89,29 +95,122 @@ def process_image_link():
 
         # Descargar la imagen de la URL
         response = requests.get(image_link)
-        image_bytes = response.content
 
         # Verificar si la descarga fue exitosa
         if response.status_code != 200:
             return jsonify({'error': 'No se pudo descargar la imagen'}), 500
 
         # Enviar la imagen al API
-        files = {'image': image_bytes}
+        files = {'image': response.content}
         response = requests.post(NUTRI_API_URL, files=files)
 
         # Procesar la respuesta del API
         response_data = response.json()
+        if 'error' in response_data:
+            return jsonify({'error': response_data['error']}), 500
+
+        # Procesar la información del resultado
         macros_dict = json.loads(response_data['macros'])
         ingredients, cautions, diet_labels, health_labels = food_formater.process_json(macros_dict)
         meal = Meal(ingredients, cautions, diet_labels, health_labels)
         meals[meal.id] = meal
-        
-        
-        result = json.loads(response_data['result'])
 
         return jsonify({'meal': meal.to_json()}), 200
     except Exception as e:
         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
+
+
+# @app.route('/image', methods=['POST'])
+# def process_image():
+#     try:
+#         # Verificar si se proporciona una imagen en la solicitud
+#         if 'image' not in request.files:
+#             return jsonify({'error': 'No se proporcionó ninguna imagen'}), 400
+
+#         # Obtener la imagen de la solicitud
+#         image = request.files['image']
+#         image_bytes = image.read()
+        
+#         # Verificar el tipo de archivo
+#         if image.filename == '':
+#             return jsonify({'error': 'Nombre de archivo vacío'}), 400
+#         if not image.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
+#             return jsonify({'error': 'Formato de imagen no admitido'}), 400
+
+#         # Convertir los bytes de la imagen en un array numpy
+#         nparr = np.frombuffer(image_bytes, np.uint8)
+
+#         # Decodificar la imagen utilizando OpenCV
+#         image_cv = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+#         # Verificar si la decodificación fue exitosa
+#         if image_cv is None:
+#             return jsonify({'error': 'No se pudo decodificar la imagen'}), 500
+
+#         # Enviar la imagen al API
+#         files = {'image': image_bytes}
+#         response = requests.post(NUTRI_API_URL, files=files)
+        
+#         # Procesar la respuesta del API
+#         response_data = response.json()
+#         if response_data['error']:
+#             raise Exception({'error': response_data['error']})
+        
+#         macros_dict = json.loads(response_data['macros'])
+#         ingredients, cautions, diet_labels, health_labels = food_formater.process_json(macros_dict)
+#         meal = Meal(ingredients, cautions, diet_labels, health_labels)
+#         meals[meal.id] = meal
+                
+#         result = json.loads(response_data['result'])
+#         # Dibujar las cajas delimitadoras en la imagen
+#         # mod_image = image_handler.draw_boxes(image_cv, result)
+#         mod_image = image_handler.draw_polygons(image_cv, result)
+
+#         # Codificar la imagen modificada como base64
+#         _, img_encoded = cv2.imencode('.jpg', mod_image)
+#         img_base64 = base64.b64encode(img_encoded).decode('utf-8')
+
+#         return jsonify({'meal': meal.to_json(),'image': img_base64}), 200
+#     except Exception as e:
+#         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
+
+# @app.route('/link', methods=['POST'])
+# def process_image_link():
+#     try:
+#         # Verificar si se proporciona una URL de imagen en la solicitud
+#         if 'image_link' not in request.json:
+#             return jsonify({'error': 'No se proporcionó ninguna URL de imagen'}), 400
+
+#         # Obtener la URL de la imagen de la solicitud
+#         image_link = request.json['image_link']
+
+#         # Descargar la imagen de la URL
+#         response = requests.get(image_link)
+#         image_bytes = response.content
+
+#         # Verificar si la descarga fue exitosa
+#         if response.status_code != 200:
+#             return jsonify({'error': 'No se pudo descargar la imagen'}), 500
+
+#         # Enviar la imagen al API
+#         files = {'image': image_bytes}
+#         response = requests.post(NUTRI_API_URL, files=files)
+
+#         # Procesar la respuesta del API
+#         response_data = response.json()
+#         macros_dict = json.loads(response_data['macros'])
+#         ingredients, cautions, diet_labels, health_labels = food_formater.process_json(macros_dict)
+#         meal = Meal(ingredients, cautions, diet_labels, health_labels)
+#         meals[meal.id] = meal
+        
+        
+#         result = json.loads(response_data['result'])
+
+#         return jsonify({'meal': meal.to_json()}), 200
+#     except Exception as e:
+#         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
     
 
 

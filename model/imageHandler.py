@@ -3,24 +3,13 @@ import requests
 from ultralytics.utils.plotting import Annotator, colors
 import cv2
 import numpy as np
-
+from shapely.geometry import Polygon as ShapelyPolygon
+import json
 
 class ImageHandler:
     def __init__(self):
-        # Puedes inicializar cualquier configuración necesaria aquí
         pass
 
-    def load_image_from_gallery(self, image_path):
-        # Método para cargar una imagen desde la galería
-        pass
-
-    def capture_photo(self):
-        # Método para capturar una foto con la cámara
-        pass
-
-    def process_image(self, image):
-        # Método para procesar la imagen si es necesario
-        pass
 
     def send_image(self, image , url):
         files = {'image': image}
@@ -28,7 +17,7 @@ class ImageHandler:
         return response
 
     def draw_boxes(self,tmp_image, result):
-        color = (255, 255, 0)  # Color para las bounding boxes
+        color = (0,0, 255)  # Color para las bounding boxes
         for item in result:
             class_name = item["name"]
             class_id = item["class"]
@@ -45,14 +34,60 @@ class ImageHandler:
         
         return tmp_image
 
+    def draw_polygons(self, image_cv, result_json):
+        try:
+            result = result_json
+            annotator = Annotator(image_cv, line_width=2)
+            
+            for item in result:
+                class_name = item.get("name")
+                confidence = item.get("confidence")
+                segments = item.get("segments")
+                if segments:
+                    mask = [(int(x), int(y)) for x, y in zip(segments.get("x", []), segments.get("y", []))]
+                    if mask:
+                        annotator.seg_bbox(mask=mask,
+                                            mask_color=colors(int(item.get("class")), True),
+                                            det_label=class_name)
+                else:
+                    raise Exception("No se encontraron segmentos en el resultado")
+            annotated_image = annotator.result()
+            return annotated_image
+        except Exception as e:
+            print(f"Error al procesar los datos JSON: {e}")
+            return None
+    
+    
+    
+    # def draw_polygons(self, image_cv, result_json):
+    #     try:
+    #         result = result_json
+    #         annotator = Annotator(image_cv, line_width=2)
+            
+    #         for item in result:
+    #             class_name = item.get("name")
+    #             confidence = item.get("confidence")
+    #             segments = item.get("segments")
+    #             if segments:
+    #                 mask = [(int(x), int(y)) for x, y in zip(segments.get("x", []), segments.get("y", []))]
+    #                 if mask:
+    #                     # Calcula el centro de la máscara
+    #                     center_x = sum([p[0] for p in mask]) / len(mask)
+    #                     center_y = sum([p[1] for p in mask]) / len(mask)
 
-    # def draw_boxes(self, tmp_image, result):
-    #     color = (255, 255,0)  # Color para las bounding boxes        
-    #     for box in result.boxes:
-    #         class_id = result.names[box.cls[0].item()]
-    #         cords = box.xyxy[0].tolist()
-    #         cords = [round(x) for x in cords]
-    #         conf = round(box.conf[0].item(), 2)
-    #         cv2.rectangle(tmp_image, (cords[0], cords[1]), (cords[2], cords[3]), color, 2)
-    #         cv2.putText(tmp_image, f'{class_id}: {conf}', (cords[0], cords[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-    #     return tmp_image
+    #                     # Dibuja la máscara
+    #                     annotator.seg_bbox(mask=mask,
+    #                                         mask_color=colors(int(item.get("class")), True),
+    #                                         det_label=None)  # No muestra la etiqueta aquí
+
+    #                     # Muestra la etiqueta en el centro de la máscara
+    #                     annotator.text((int(center_x), int(center_y)), text=f"{class_name}: {confidence}", color='white')
+
+    #         annotated_image = annotator.result()
+    #         return annotated_image
+    #     except Exception as e:
+    #         print(f"Error al procesar los datos JSON: {e}")
+    #         return None
+
+
+

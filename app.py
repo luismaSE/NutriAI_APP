@@ -1,13 +1,12 @@
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
-import requests
+import requests #type: ignore
 import os
 import json
-import msgpack
-import pickle
 import base64
 import cv2
 import numpy as np
+from flask_sqlalchemy import SQLAlchemy
 
 from model.imageHandler import ImageHandler
 from model.food import Meal , Ingredient, FoodFormater
@@ -17,11 +16,22 @@ app = Flask(__name__)
 # Configuración
 
 NUTRI_API_URL = os.getenv('NUTRI_API_URL')
+NUTRI_MACROS_API_URL = os.getenv('NUTRI_MACROS_API_URL')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///meals.db'  # Crea una base de datos SQLite llamada 'meals.db'
+db = SQLAlchemy(app)
 
 food_formater = FoodFormater()
 image_handler = ImageHandler()
-meals = {}
 
+
+# Modelo de la base de datos para Meal
+class MealModel(db.Model):  # type: ignore
+    id = db.Column(db.String, primary_key=True)
+    meal_data = db.Column(db.Text) # Almacenaremos el JSON de Meal aquí
+
+# Crea la tabla si no existe
+with app.app_context():
+    db.create_all()
 
 # FOOD DETECTION
 
@@ -66,21 +76,37 @@ def process_image():
             return jsonify({'error': response_data['error']}), 500
 
         # Procesar la información del resultado
-        macros_dict = json.loads(response_data['macros'])
-        ingredients, cautions, diet_labels, health_labels = food_formater.process_json(macros_dict)
-        meal = Meal(ingredients, cautions, diet_labels, health_labels)
-        meals[meal.id] = meal
+        try:
+            macros_dict = json.loads(response_data['macros'])
+            ingredients, cautions, diet_labels, health_labels = food_formater.process_json(macros_dict)
+            meal = Meal(ingredients, cautions, diet_labels, health_labels)
+            
+            # Guardar la comida en la base de datos
+            new_meal_model = MealModel(id=meal.id, meal_data=json.dumps(meal.to_json()))
+            db.session.add(new_meal_model)
+            db.session.commit()
 
-        result = json.loads(response_data['result'])
+        except:
+            return jsonify({'error': 'Error al procesar los datos de la comida'}), 500
+
+        # result = json.loads(response_data['result'])
+        result = response_data['result']
+        
         mod_image = image_handler.draw_polygons(image_cv, result)
+        print('imagen modificada')
 
         # Codificar la imagen modificada como base64
-        _, img_encoded = cv2.imencode('.jpg', mod_image)
+        img_encoded = cv2.imencode('.jpg', mod_image)[1]
+        print('imagen codificada')
         img_base64 = base64.b64encode(img_encoded).decode('utf-8')
+        print('imagen base64')
 
         return jsonify({'meal': meal.to_json(), 'image': img_base64}), 200
     except Exception as e:
         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
+
+
 
 
 @app.route('/link', methods=['POST'])
@@ -107,118 +133,20 @@ def process_image_link():
         # Procesar la respuesta del API
         response_data = response.json()
         if 'error' in response_data:
-            return jsonify({'error': response_data['error']}), 500
+            return jsonify({'error': f'Error de la API:{str(response_data['error'])}'}), 500
 
         # Procesar la información del resultado
         macros_dict = json.loads(response_data['macros'])
         ingredients, cautions, diet_labels, health_labels = food_formater.process_json(macros_dict)
         meal = Meal(ingredients, cautions, diet_labels, health_labels)
-        meals[meal.id] = meal
+        # Guardar la comida en la base de datos
+        new_meal_model = MealModel(id=meal.id, meal_data=json.dumps(meal.to_json()))
+        db.session.add(new_meal_model)
+        db.session.commit()
 
         return jsonify({'meal': meal.to_json()}), 200
     except Exception as e:
         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
-
-
-
-# @app.route('/image', methods=['POST'])
-# def process_image():
-#     try:
-#         # Verificar si se proporciona una imagen en la solicitud
-#         if 'image' not in request.files:
-#             return jsonify({'error': 'No se proporcionó ninguna imagen'}), 400
-
-#         # Obtener la imagen de la solicitud
-#         image = request.files['image']
-#         image_bytes = image.read()
-        
-#         # Verificar el tipo de archivo
-#         if image.filename == '':
-#             return jsonify({'error': 'Nombre de archivo vacío'}), 400
-#         if not image.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
-#             return jsonify({'error': 'Formato de imagen no admitido'}), 400
-
-#         # Convertir los bytes de la imagen en un array numpy
-#         nparr = np.frombuffer(image_bytes, np.uint8)
-
-#         # Decodificar la imagen utilizando OpenCV
-#         image_cv = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        
-#         # Verificar si la decodificación fue exitosa
-#         if image_cv is None:
-#             return jsonify({'error': 'No se pudo decodificar la imagen'}), 500
-
-#         # Enviar la imagen al API
-#         files = {'image': image_bytes}
-#         response = requests.post(NUTRI_API_URL, files=files)
-        
-#         # Procesar la respuesta del API
-#         response_data = response.json()
-#         if response_data['error']:
-#             raise Exception({'error': response_data['error']})
-        
-#         macros_dict = json.loads(response_data['macros'])
-#         ingredients, cautions, diet_labels, health_labels = food_formater.process_json(macros_dict)
-#         meal = Meal(ingredients, cautions, diet_labels, health_labels)
-#         meals[meal.id] = meal
-                
-#         result = json.loads(response_data['result'])
-#         # Dibujar las cajas delimitadoras en la imagen
-#         # mod_image = image_handler.draw_boxes(image_cv, result)
-#         mod_image = image_handler.draw_polygons(image_cv, result)
-
-#         # Codificar la imagen modificada como base64
-#         _, img_encoded = cv2.imencode('.jpg', mod_image)
-#         img_base64 = base64.b64encode(img_encoded).decode('utf-8')
-
-#         return jsonify({'meal': meal.to_json(),'image': img_base64}), 200
-#     except Exception as e:
-#         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
-
-
-# @app.route('/link', methods=['POST'])
-# def process_image_link():
-#     try:
-#         # Verificar si se proporciona una URL de imagen en la solicitud
-#         if 'image_link' not in request.json:
-#             return jsonify({'error': 'No se proporcionó ninguna URL de imagen'}), 400
-
-#         # Obtener la URL de la imagen de la solicitud
-#         image_link = request.json['image_link']
-
-#         # Descargar la imagen de la URL
-#         response = requests.get(image_link)
-#         image_bytes = response.content
-
-#         # Verificar si la descarga fue exitosa
-#         if response.status_code != 200:
-#             return jsonify({'error': 'No se pudo descargar la imagen'}), 500
-
-#         # Enviar la imagen al API
-#         files = {'image': image_bytes}
-#         response = requests.post(NUTRI_API_URL, files=files)
-
-#         # Procesar la respuesta del API
-#         response_data = response.json()
-#         macros_dict = json.loads(response_data['macros'])
-#         ingredients, cautions, diet_labels, health_labels = food_formater.process_json(macros_dict)
-#         meal = Meal(ingredients, cautions, diet_labels, health_labels)
-#         meals[meal.id] = meal
-        
-        
-#         result = json.loads(response_data['result'])
-
-#         return jsonify({'meal': meal.to_json()}), 200
-#     except Exception as e:
-#         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
-    
-
-
-
-
-
-
-
 
 
 
@@ -229,156 +157,217 @@ def process_image_link():
 @app.route('/new_meal', methods=['POST'])
 def new_meal():
     try:
-        # Verificar si se proporciona una comida en la solicitud
         if not request.json:
             return jsonify({'error': 'No se proporcionó ninguna comida'}), 400
 
-        # Crear una nueva comida
-        meal = Meal().from_json(request.json)
-        meals[meal.id] = meal
+        meal = Meal.from_json(request.json) #type: ignore
+        
+        # Guardar la comida en la base de datos
+        new_meal_model = MealModel(id=meal.id, meal_data=json.dumps(meal.to_json()))
+        db.session.add(new_meal_model)
+        db.session.commit()
 
-        return jsonify({'message': 'Comida creada correctamente'}), 201
+        return jsonify({'message': 'Comida creada correctamente', 'id': meal.id}), 201
     except Exception as e:
         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
-    
-    
+
+
 @app.route('/get_meal/<meal_id>', methods=['GET'])
-def get_meal(meal_id:str):
+def get_meal(meal_id: str):
     try:
-        # Verificar si el ID de la comida es válido
-        if meal_id not in meals.keys():
+        meal_model = MealModel.query.get(meal_id)
+        if meal_model is None:
             return jsonify({'error': 'ID de comida no válido'}), 400
 
-        # Obtener la comida correspondiente al ID
-        meal = meals[meal_id]
-
+        meal_data = json.loads(meal_model.meal_data)
+        meal = Meal.from_json(meal_data) #type: ignore
         return jsonify({'meal': meal.to_json()}), 200
     except Exception as e:
         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
-    
-    
-    
+
+
+
 @app.route('/update_meal/<meal_id>', methods=['PUT'])
-def update_meal(meal_id:str):
+def update_meal(meal_id: str):
     try:
         if not request.json:
             return jsonify({'error': 'No se proporcionó ninguna solicitud JSON'}), 400
-        # Verificar si el ID de la comida es válido
-        if meal_id not in meals.keys():
+
+        meal_model = MealModel.query.get(meal_id)
+        if meal_model is None:
             return jsonify({'error': 'ID de comida no válido'}), 400
 
-        # Obtener la comida correspondiente al ID
-        meal = meals[meal_id]
-        
-        # Actualizar los datos de la comida
+        # Actualizar la comida en la base de datos
+        meal = Meal.from_json(json.loads(meal_model.meal_data)) #type: ignore
         meal.update(request.json['meal'])
-        meals[meal_id] = meal
+        meal_model.meal_data = json.dumps(meal.to_json())
+        db.session.commit()
 
         return jsonify({'message': 'Comida actualizada correctamente'}), 200
     except Exception as e:
         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
-    
-    
+
 @app.route('/delete_meal/<meal_id>', methods=['DELETE'])
-def delete_meal(meal_id:str):
+def delete_meal(meal_id: str):
     try:
-        # Verificar si el ID de la comida es válido
-        if meal_id not in meals.keys():
+        meal_model = MealModel.query.get(meal_id)
+        if meal_model is None:
             return jsonify({'error': 'ID de comida no válido'}), 400
 
-        # Eliminar la comida correspondiente al ID
-        del meals[meal_id]
+        db.session.delete(meal_model)
+        db.session.commit()
 
         return jsonify({'message': 'Comida eliminada correctamente'}), 200
     except Exception as e:
         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
 
-
-
+    
+    
+    
+    
+    
 #ABM INGREDIENT
-
-@app.route('/add_ingredient/<meal_id>', methods=['POST'])
-def add_ingredient(meal_id:str):
+    
+    
+# El endpoint debe recibir un ingrediente con 'weight' modificado, no se puede modificar el nombre del ingrediente
+# Una vez modificado el peso del ingrediente, se debe actualizar cada uno de los nutrientes de ese ingrediente y la comida en general    
+@app.route('/update_ingredient/<meal_id>', methods=['PUT'])
+def update_ingredient(meal_id: str):
     try:
         if not request.json:
             return jsonify({'error': 'No se proporcionó ninguna solicitud JSON'}), 400
-        # Verificar si el ID de la comida es válido
-        if meal_id not in meals.keys():
+
+        # Obtener la comida de la base de datos
+        meal_model = MealModel.query.get(meal_id)
+        if meal_model is None:
             return jsonify({'error': 'ID de comida no válido'}), 400
 
-        # Obtener la comida correspondiente al ID
-        meal = meals[meal_id]
-        
-        # Crear un nuevo ingrediente
-        ingredient = Ingredient().from_json(request.json['ingredient'])
-        meal.add_ingredient(ingredient)
-        meals[meal_id] = meal
+        # Convertir los datos de la base de datos a un objeto Meal
+        meal = Meal.from_json(json.loads(meal_model.meal_data)) # <-- Convertir a Meal aquí
 
-        return jsonify({'message': 'Ingrediente añadido correctamente'}), 200
+        # Actualizar el ingrediente
+        ingredient_name = str(request.json['ingredient_name'])
+        weight = float(request.json['weight'])
+        orig_ingr = meal.get_ingredient(ingredient_name)
+        if orig_ingr is None:
+            return jsonify({'error': 'Ingrediente no encontrado'}), 404
+        meal.update_ingredient(ingredient_name, weight, orig_ingr)
+
+        # Actualizar los datos de la comida en la base de datos
+        meal_model.meal_data = json.dumps(meal.to_json())
+        db.session.commit()
+
+        return jsonify({'message': 'Ingrediente actualizado correctamente', 'meal': meal.to_json()}), 200
     except Exception as e:
         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
     
-@app.route('/remove_ingredient/<meal_id>', methods=['DELETE'])
-def remove_ingredient(meal_id:str):
+
+
+@app.route('/add_ingredient/<meal_id>', methods=['POST'])
+def add_ingredient(meal_id: str):
     try:
         if not request.json:
             return jsonify({'error': 'No se proporcionó ninguna solicitud JSON'}), 400
-        # Verificar si el ID de la comida es válido
-        if meal_id not in meals.keys():
+
+        # Obtener la comida de la base de datos
+        meal_model = MealModel.query.get(meal_id)
+        if meal_model is None:
             return jsonify({'error': 'ID de comida no válido'}), 400
 
-        # Obtener la comida correspondiente al ID
-        meal = meals[meal_id]
+        # Convertir los datos de la base de datos a un objeto Meal
+        meal = Meal.from_json(json.loads(meal_model.meal_data)) 
         
-        # Eliminar el ingrediente
+        query = []
+        for ingr in meal.ingredients:
+            query.append(str(ingr.weight)+'g of '+ingr.name)
+        query.append(request.json['query'])
+        
+        # Enviar la consulta como JSON en el cuerpo de la solicitud
+        response = requests.post(NUTRI_MACROS_API_URL, json={'query': query})
+
+        # Procesar la respuesta del API
+        if response.status_code != 200:
+            error_message = response.json().get('error', 'Error desconocido de la API')
+            return jsonify({'error': f'Error de la API: {error_message}'}), response.status_code
+
+        response_data = response.json()
+        if 'error' in response_data:
+            return jsonify({'error': f'Error de la API:{str(response_data['error'])}'}), 500
+
+        print('response_data:',response_data)
+        # Procesar la información del resultado
+        print('vamos a ver los macros')
+        # macros_dict = json.loads(response_data['macros'])
+        # macros_dict = json.loads(response_data)
+        macros_dict = response_data
+        ingredients, cautions, diet_labels, health_labels = food_formater.process_json(macros_dict)
+        meal.ingredients = ingredients
+        meal.cautions = cautions
+        meal.diet_labels = diet_labels
+        meal.health_labels = health_labels
+
+        # Actualizar la comida en la base de datos
+        meal_model.meal_data = json.dumps(meal.to_json())
+        db.session.commit()
+
+        return jsonify({'message': 'Ingrediente añadido correctamente','meal':meal.to_json()}), 200
+    except Exception as e:
+        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
+
+@app.route('/remove_ingredient/<meal_id>', methods=['DELETE'])
+def remove_ingredient(meal_id: str):
+    try:
+        if not request.json:
+            return jsonify({'error': 'No se proporcionó ninguna solicitud JSON'}), 400
+
+        # Obtener la comida de la base de datos
+        meal_model = MealModel.query.get(meal_id)
+        if meal_model is None:
+            return jsonify({'error': 'ID de comida no válido'}), 400
+
+        # Convertir los datos de la base de datos a un objeto Meal
+        meal = Meal.from_json(json.loads(meal_model.meal_data))
+
+        # Eliminar el ingrediente del objeto Meal
         ingredient_name = request.json['ingredient_name']
         if not meal.remove_ingredient_by_name(ingredient_name):
             return jsonify({'error': 'Ingrediente no encontrado'}), 404
-        meals[meal_id] = meal
 
-        return jsonify({'message': 'Ingrediente eliminado correctamente'}), 200
+        # Construir la nueva consulta con los ingredientes restantes
+        query = []
+        for ingr in meal.ingredients:
+            query.append(str(ingr.weight) + 'g of ' + ingr.name)
+
+        # Enviar la consulta al API para recalcular los macros
+        response = requests.post(NUTRI_MACROS_API_URL, json={'query': query})
+
+        # Procesar la respuesta del API
+        if response.status_code != 200:
+            error_message = response.json().get('error', 'Error desconocido de la API')
+            return jsonify({'error': f'Error de la API: {error_message}'}), response.status_code
+
+        response_data = response.json()
+        if 'error' in response_data:
+            return jsonify({'error': f'Error de la API:{str(response_data['error'])}'}), 500
+
+        macros_dict = response_data
+        ingredients, cautions, diet_labels, health_labels = food_formater.process_json(macros_dict)
+
+        # Actualizar la información nutricional de la comida
+        meal.ingredients = ingredients
+        meal.cautions = cautions
+        meal.diet_labels = diet_labels
+        meal.health_labels = health_labels
+
+        # Actualizar la comida en la base de datos
+        meal_model.meal_data = json.dumps(meal.to_json())
+        db.session.commit()
+
+        return jsonify({'message': 'Ingrediente eliminado correctamente', 'meal': meal.to_json()}), 200
     except Exception as e:
         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
-    
-@app.route('/update_ingredient/<meal_id>', methods=['PUT'])
-def update_ingredient(meal_id:str):
-    try:
-        if not request.json:
-            return jsonify({'error': 'No se proporcionó ninguna solicitud JSON'}), 400
-        # Verificar si el ID de la comida es válido
-        if meal_id not in meals.keys():
-            return jsonify({'error': 'ID de comida no válido'}), 400
-
-        # Obtener la comida correspondiente al ID
-        meal = meals[meal_id]
-        
-        # Actualizar el ingrediente
-        ingredient_name = request.json['ingredient_name']
-        ingredient = Ingredient().from_json(request.json['ingredient'])
-        if not meal.update_ingredient(ingredient_name, ingredient):
-            return jsonify({'error': 'Ingrediente no encontrado'}), 404
-        meals[meal_id] = meal
-
-        return jsonify({'message': 'Ingrediente actualizado correctamente'}), 200
-    except Exception as e:
-        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
-
-
 
 
 
@@ -388,3 +377,5 @@ def update_ingredient(meal_id:str):
 if __name__ == '__main__':
     load_dotenv()
     app.run(debug=True, port=5005)
+    # app.run(debug=True, host='192.168.100.18', port=5005)
+    # app.run(debug=True, host='10.60.7.199', port=5005)

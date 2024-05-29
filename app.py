@@ -6,11 +6,11 @@ import json
 import base64
 import cv2
 import numpy as np
-from flask_sqlalchemy import SQLAlchemy
 
 from model.imageHandler import ImageHandler
-from model.food import Meal , Ingredient, FoodFormater
-
+from model.food import Meal , FoodFormater
+from model.mealModel import MealModel
+from model.database import db
 app = Flask(__name__)
 
 # Configuración
@@ -18,16 +18,11 @@ app = Flask(__name__)
 NUTRI_API_URL = os.getenv('NUTRI_API_URL')
 NUTRI_MACROS_API_URL = os.getenv('NUTRI_MACROS_API_URL')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///meals.db'  # Crea una base de datos SQLite llamada 'meals.db'
-db = SQLAlchemy(app)
+db.init_app(app)
+
 
 food_formater = FoodFormater()
 image_handler = ImageHandler()
-
-
-# Modelo de la base de datos para Meal
-class MealModel(db.Model):  # type: ignore
-    id = db.Column(db.String, primary_key=True)
-    meal_data = db.Column(db.Text) # Almacenaremos el JSON de Meal aquí
 
 # Crea la tabla si no existe
 with app.app_context():
@@ -106,9 +101,6 @@ def process_image():
         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
 
 
-
-
-
 @app.route('/link', methods=['POST'])
 def process_image_link():
     try:
@@ -152,7 +144,10 @@ def process_image_link():
 
 
 
-#ABM MEAL
+
+
+
+#MEAL
 
 @app.route('/new_meal', methods=['POST'])
 def new_meal():
@@ -226,7 +221,7 @@ def delete_meal(meal_id: str):
     
     
     
-#ABM INGREDIENT
+#INGREDIENT
     
     
 # El endpoint debe recibir un ingrediente con 'weight' modificado, no se puede modificar el nombre del ingrediente
@@ -376,6 +371,5 @@ def remove_ingredient(meal_id: str):
 
 if __name__ == '__main__':
     load_dotenv()
-    app.run(debug=True, port=5005)
-    # app.run(debug=True, host='192.168.100.18', port=5005)
-    # app.run(debug=True, host='10.60.7.199', port=5005)
+    # app.run(debug=True, port=5005)
+    app.run(debug=True, host='192.168.100.18', port=5005)

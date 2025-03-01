@@ -73,11 +73,7 @@ class ImageHandler:
 
                         label_x = max(centroid_x - text_width // 2, 0)
                         label_y = max(centroid_y + text_height // 2, 0)
-                        print('tamano img:',height)
-                        print('escala:', scale_factor)
-                        print('line_thickness:', line_thickness)
-                        cv2.putText(annotated_image, label, (label_x, label_y), cv2.FONT_HERSHEY_SIMPLEX,
-                                    font_scale, colors(i), line_thickness)
+                        # cv2.putText(annotated_image, label, (label_x, label_y), cv2.FONT_HERSHEY_SIMPLEX,font_scale, colors(i), line_thickness)
 
             return annotated_image
         except Exception as e:

@@ -86,8 +86,9 @@ class Ingredient:
         )
 
 class Meal:
-    def __init__(self, ingredients: list, cautions: list, diet_labels: list, health_labels: list, rda: dict | None = None) -> None:
-        self.id = uuid.uuid4().hex
+    def __init__(self, ingredients: list, cautions: list, diet_labels: list, health_labels: list, rda: dict | None = None, id: str | None = None) -> None:
+        # Si se proporciona una ID en el JSON, úsala, de lo contrario, genera una nueva
+        self.id = id if id else uuid.uuid4().hex 
         self.ingredients = ingredients
         self.cautions = cautions
         self.diet_labels = diet_labels
@@ -195,7 +196,8 @@ class Meal:
             data['cautions'],
             data['diet_labels'],
             data['health_labels'],
-            data.get('rda')  # Maneja el caso donde 'rda' puede no estar presente
+            data.get('rda'),
+            data.get('id')  # Pasa la ID del JSON al constructor
         )
 
     def update(self, data: dict):

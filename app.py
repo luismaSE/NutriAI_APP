@@ -122,7 +122,7 @@ def process_image_link():
         # Procesar la respuesta del API
         response_data = response.json()
         if 'error' in response_data:
-            return jsonify({'error': f'Error de la API:{str(response_data['error'])}'}), 500
+            return jsonify({'error': response_data['error']}), 500
 
         # Procesar la información del resultado
         macros_dict = json.loads(response_data['macros'])
@@ -265,8 +265,7 @@ def add_ingredient(meal_id: str):
 
         response_data = response.json()
         if 'error' in response_data:
-            return jsonify({'error': f'Error de la API:{str(response_data['error'])}'}), 500
-
+            return jsonify({'error': f'Error de la API:{str(response_data["error"])}'}), 500
         macros_dict = response_data
         ingredients, cautions, diet_labels, health_labels = food_formater.process_json(macros_dict)
 
@@ -317,8 +316,7 @@ def remove_ingredient(meal_id: str):
 
         response_data = response.json()
         if 'error' in response_data:
-            return jsonify({'error': f'Error de la API:{str(response_data['error'])}'}), 500
-
+            return jsonify({'error': f'Error de la API:{str(response_data["error"])}'}), 500
         macros_dict = response_data
         ingredients, cautions, diet_labels, health_labels = food_formater.process_json(macros_dict)
 
@@ -343,4 +341,5 @@ def remove_ingredient(meal_id: str):
 if __name__ == '__main__':
     load_dotenv()
     # app.run(debug=True, port=5005)
-    app.run(debug=True, host='192.168.100.18', port=5005)
+    # app.run(debug=True, host='192.168.100.18', port=5005)
+    app.run(debug=True, host='0.0.0.0', port=5005)

@@ -12,6 +12,9 @@ class Meal:
         self.health_labels = health_labels
         self.rda = rda if rda else self.load_rda()
 
+    def __repr__(self):
+        return f'<Meal {self.id}>'
+
     def load_rda(self):
         with open(Config.RDA_FILE_PATH, 'r') as f:
             rda = json.load(f)

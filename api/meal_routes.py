@@ -74,7 +74,7 @@ def update_meal(meal_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@meal_bp.route('/update_ingredient/<meal_id>', methods=['PUT'])
+@meal_bp.route('/meal/update_ingredient/<meal_id>', methods=['PUT'])
 @jwt_required()
 def update_ingredient(meal_id):
     """
@@ -84,6 +84,8 @@ def update_ingredient(meal_id):
     try:
         user_id = get_jwt_identity()
         meal = api_service.get_meal(meal_id)
+        print(meal.user_id, user_id)
+        print(type(meal.user_id), type(user_id))
         if meal.user_id != user_id:
             return jsonify({'error': 'Acceso denegado'}), 403
         if not request.json:
@@ -95,7 +97,7 @@ def update_ingredient(meal_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@meal_bp.route('/add_ingredient/<meal_id>', methods=['POST'])
+@meal_bp.route('/meal/add_ingredient/<meal_id>', methods=['POST'])
 @jwt_required()
 def add_ingredient(meal_id):
     """
@@ -113,9 +115,10 @@ def add_ingredient(meal_id):
         meal = api_service.add_ingredient(meal_id, query)
         return jsonify({'message': 'Ingrediente añadido correctamente', 'meal': meal.to_json()}), 200
     except Exception as e:
+        raise e
         return jsonify({'error': str(e)}), 500
 
-@meal_bp.route('/remove_ingredient/<meal_id>', methods=['DELETE'])
+@meal_bp.route('/meal/remove_ingredient/<meal_id>', methods=['DELETE'])
 @jwt_required()
 def remove_ingredient(meal_id):
     """

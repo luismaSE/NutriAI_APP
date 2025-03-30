@@ -9,6 +9,7 @@ from models.database import db, MealModel
 from utils.image_handler import ImageHandler
 from utils.food_formatter import FoodFormatter
 from config import Config
+from datetime import datetime
 
 class ApiService:
     def __init__(self):
@@ -33,75 +34,61 @@ class ApiService:
             ingredients, cautions, diet_labels, health_labels = self.food_formatter.process_json(macros_dict)
             meal = Meal(ingredients, cautions, diet_labels, health_labels)
 
-            new_meal_model = MealModel(id=meal.id, meal_data=json.dumps(meal.to_json()), user_id=user_id)
-            db.session.add(new_meal_model)
-            db.session.commit()
-
-            result = response_data['result']
-            mod_image = self.image_handler.draw_polygons(image_cv, result)
+            mod_image = self.image_handler.draw_polygons(image_cv, response_data['result'])
             if mod_image is None:
                 raise ValueError("Error al dibujar los polígonos en la imagen")
-
             img_encoded = cv2.imencode('.jpg', mod_image)[1]
             img_base64 = base64.b64encode(img_encoded).decode('utf-8')
+
+            meal_json = meal.to_json()
+            del meal_json['created_at']
+            del meal_json['image_base64']
+            new_meal_model = MealModel(
+                id=meal.id,
+                meal_data=json.dumps(meal_json),
+                user_id=user_id,
+                image_base64=img_base64
+            )
+            db.session.add(new_meal_model)
+            db.session.commit()
 
             return {'meal': meal.to_json(), 'image': img_base64}
         except Exception as e:
             raise e
-        
-        
+
     def detect_foods(self, image_bytes, user_id):
-        """
-        Detecta alimentos en una imagen y devuelve los nombres detectados junto con la imagen procesada.
-        """
         try:
-            # Decodifica la imagen
             image_cv = cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
             if image_cv is None:
                 raise ValueError("No se pudo decodificar la imagen")
 
-            # Envía la imagen a la API externa para detección
             files = {'image': image_bytes}
-            response = requests.post(Config.NUTRI_API_URL+'/detect_food', files=files)
+            response = requests.post(Config.NUTRI_API_URL + '/detect_food', files=files)
             response.raise_for_status()
             response_data = response.json()
 
             if 'error' in response_data:
                 raise ValueError(response_data['error'])
 
-            # Extrae los resultados de detección (nombres de alimentos)
-            result = response_data['result']  # Asumo que 'result' contiene las detecciones
-            detected_foods = [item.get('name') for item in result]  # Ajusta según la estructura real
+            result = response_data['result']
+            detected_foods = [item.get('name') for item in result]
 
-            # Dibuja polígonos en la imagen
             mod_image = self.image_handler.draw_polygons(image_cv, result)
             if mod_image is None:
                 raise ValueError("Error al dibujar los polígonos en la imagen")
-
-            # Codifica la imagen procesada en base64
             img_encoded = cv2.imencode('.jpg', mod_image)[1]
             img_base64 = base64.b64encode(img_encoded).decode('utf-8')
 
-            # Devuelve los alimentos detectados y la imagen procesada
             return {
                 'detected_foods': detected_foods,
                 'image': img_base64
             }
-
         except Exception as e:
             raise e
 
     def calculate_macros_from_foods(self, detected_foods, user_id):
-        """
-        Calcula los macronutrientes de los alimentos detectados usando /get_macros.
-        """
         try:
-            # Prepara la consulta para /get_macros
-            query = {
-                "query": detected_foods  # Lista de nombres de alimentos
-            }
-
-            # Llama al endpoint /get_macros
+            query = {"query": detected_foods}
             response = requests.post(
                 f"{Config.NUTRI_API_URL}/get_macros",
                 headers={'Content-Type': 'application/json'},
@@ -110,35 +97,25 @@ class ApiService:
             response.raise_for_status()
             response_data = response.json()
 
-            # Procesa los macronutrientes
-            macros_dict = json.loads(response_data['macros'])  # Ajusta según la respuesta real
+            macros_dict = json.loads(response_data['macros'])
             ingredients, cautions, diet_labels, health_labels = self.food_formatter.process_json(macros_dict)
+            meal = Meal(ingredients, cautions, diet_labels, health_labels)
 
-            # Crea un objeto Meal
-            meal = Meal(
-                id=str(uuid.uuid4()),
-                ingredients=ingredients,
-                cautions=cautions,
-                diet_labels=diet_labels,
-                health_labels=health_labels,
-                total_nutritional_info={},  # Ajusta según sea necesario
-                daily_nutritional_info={}   # Ajusta según sea necesario
-            )
-
-            # Guarda en la base de datos
+            meal_json = meal.to_json()
+            del meal_json['created_at']
+            del meal_json['image_base64']
             new_meal_model = MealModel(
                 id=meal.id,
-                meal_data=json.dumps(meal.to_json()),
-                user_id=user_id
+                meal_data=json.dumps(meal_json),
+                user_id=user_id,
+                image_base64=None
             )
             db.session.add(new_meal_model)
             db.session.commit()
 
             return meal.to_json()
-
         except Exception as e:
             raise e
-        
 
     def process_image_link(self, image_link, user_id):
         try:
@@ -153,7 +130,15 @@ class ApiService:
     def create_meal(self, meal_data, user_id):
         try:
             meal = Meal.from_json(meal_data)
-            new_meal_model = MealModel(id=meal.id, meal_data=json.dumps(meal.to_json()), user_id=user_id)
+            meal_json = meal.to_json()
+            del meal_json['created_at']
+            del meal_json['image_base64']
+            new_meal_model = MealModel(
+                id=meal.id,
+                meal_data=json.dumps(meal_json),
+                user_id=user_id,
+                image_base64=meal.image_base64
+            )
             db.session.add(new_meal_model)
             db.session.commit()
             return meal
@@ -167,7 +152,9 @@ class ApiService:
                 raise ValueError("ID de comida no válido")
             meal_data = json.loads(meal_model.meal_data)
             meal = Meal.from_json(meal_data)
-            meal.user_id = meal_model.user_id  # Añadimos user_id al objeto Meal para verificación
+            meal.created_at = meal_model.created_at.isoformat()
+            meal.image_base64 = meal_model.image_base64
+            meal.user_id = meal_model.user_id
             return meal
         except Exception as e:
             raise e
@@ -178,7 +165,11 @@ class ApiService:
             if meal_model is None:
                 raise ValueError("ID de comida no válido")
             meal = Meal.from_json(updated_meal_data)
-            meal_model.meal_data = json.dumps(meal.to_json())
+            meal_json = meal.to_json()
+            del meal_json['created_at']
+            del meal_json['image_base64']
+            meal_model.meal_data = json.dumps(meal_json)
+            meal_model.image_base64 = meal.image_base64
             db.session.commit()
             return meal
         except Exception as e:
@@ -196,7 +187,10 @@ class ApiService:
                 raise ValueError("Ingrediente no encontrado")
             if not meal.update_ingredient(ingredient_name, weight, orig_ingr):
                 raise ValueError("Error al actualizar el ingrediente")
-            meal_model.meal_data = json.dumps(meal.to_json())
+            meal_json = meal.to_json()
+            del meal_json['created_at']
+            del meal_json['image_base64']
+            meal_model.meal_data = json.dumps(meal_json)
             db.session.commit()
             return meal
         except Exception as e:
@@ -222,7 +216,10 @@ class ApiService:
             meal.cautions = cautions
             meal.diet_labels = diet_labels
             meal.health_labels = health_labels
-            meal_model.meal_data = json.dumps(meal.to_json())
+            meal_json = meal.to_json()
+            del meal_json['created_at']
+            del meal_json['image_base64']
+            meal_model.meal_data = json.dumps(meal_json)
             db.session.commit()
             return meal
         except Exception as e:
@@ -249,7 +246,10 @@ class ApiService:
             meal.cautions = cautions
             meal.diet_labels = diet_labels
             meal.health_labels = health_labels
-            meal_model.meal_data = json.dumps(meal.to_json())
+            meal_json = meal.to_json()
+            del meal_json['created_at']
+            del meal_json['image_base64']
+            meal_model.meal_data = json.dumps(meal_json)
             db.session.commit()
             return meal
         except Exception as e:

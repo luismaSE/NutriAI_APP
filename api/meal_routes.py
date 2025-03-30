@@ -10,14 +10,16 @@ api_service = ApiService()
 @meal_bp.route('/meals', methods=['GET'])
 @jwt_required()
 def get_user_meals():
-    """
-    Obtiene todas las comidas del usuario autenticado.
-    Respuesta esperada: Lista de comidas en formato JSON.
-    """
     try:
         user_id = get_jwt_identity()
         meals = MealModel.query.filter_by(user_id=user_id).all()
-        meals_data = [json.loads(meal.meal_data) for meal in meals]
+        meals_data = []
+        for meal in meals:
+            meal_json = json.loads(meal.meal_data)
+            meal_json['created_at'] = meal.created_at.isoformat()  # Agregar desde la columna
+            meal_json['image_base64'] = meal.image_base64  # Agregar desde la columna
+            meals_data.append(meal_json)
+        print(meals_data)
         return jsonify({'meals': meals_data}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -25,10 +27,6 @@ def get_user_meals():
 @meal_bp.route('/meal/new_meal', methods=['POST'])
 @jwt_required()
 def new_meal():
-    """
-    Crea una nueva comida para el usuario autenticado.
-    Entrada esperada: JSON con los datos de la comida.
-    """
     try:
         user_id = get_jwt_identity()
         if not request.json:
@@ -42,9 +40,6 @@ def new_meal():
 @meal_bp.route('/get_meal/<meal_id>', methods=['GET'])
 @jwt_required()
 def get_meal(meal_id):
-    """
-    Obtiene una comida específica por ID, si pertenece al usuario autenticado.
-    """
     try:
         user_id = get_jwt_identity()
         meal = api_service.get_meal(meal_id)
@@ -57,10 +52,6 @@ def get_meal(meal_id):
 @meal_bp.route('/update_meal/<meal_id>', methods=['PUT'])
 @jwt_required()
 def update_meal(meal_id):
-    """
-    Actualiza una comida específica por ID, si pertenece al usuario autenticado.
-    Entrada esperada: JSON con los datos actualizados de la comida bajo la clave 'meal'.
-    """
     try:
         user_id = get_jwt_identity()
         meal = api_service.get_meal(meal_id)
@@ -77,15 +68,9 @@ def update_meal(meal_id):
 @meal_bp.route('/meal/update_ingredient/<meal_id>', methods=['PUT'])
 @jwt_required()
 def update_ingredient(meal_id):
-    """
-    Actualiza un ingrediente en una comida específica, si pertenece al usuario autenticado.
-    Entrada esperada: JSON con 'ingredient_name' y 'weight'.
-    """
     try:
         user_id = get_jwt_identity()
         meal = api_service.get_meal(meal_id)
-        print(meal.user_id, user_id)
-        print(type(meal.user_id), type(user_id))
         if meal.user_id != user_id:
             return jsonify({'error': 'Acceso denegado'}), 403
         if not request.json:
@@ -100,10 +85,6 @@ def update_ingredient(meal_id):
 @meal_bp.route('/meal/add_ingredient/<meal_id>', methods=['POST'])
 @jwt_required()
 def add_ingredient(meal_id):
-    """
-    Añade un ingrediente a una comida específica, si pertenece al usuario autenticado.
-    Entrada esperada: JSON con 'query' (ejemplo: '100g of chicken').
-    """
     try:
         user_id = get_jwt_identity()
         meal = api_service.get_meal(meal_id)
@@ -115,16 +96,11 @@ def add_ingredient(meal_id):
         meal = api_service.add_ingredient(meal_id, query)
         return jsonify({'message': 'Ingrediente añadido correctamente', 'meal': meal.to_json()}), 200
     except Exception as e:
-        raise e
         return jsonify({'error': str(e)}), 500
 
 @meal_bp.route('/meal/remove_ingredient/<meal_id>', methods=['DELETE'])
 @jwt_required()
 def remove_ingredient(meal_id):
-    """
-    Elimina un ingrediente de una comida específica, si pertenece al usuario autenticado.
-    Entrada esperada: JSON con 'ingredient_name'.
-    """
     try:
         user_id = get_jwt_identity()
         meal = api_service.get_meal(meal_id)

@@ -17,6 +17,7 @@ with app.app_context():
     db.create_all()
 
 app.config['SECRET_KEY'] = 'X7k9pL2mN8qR5tW3vY6zA1bC4dE7fG9h'  # Reemplaza con tu clave generada
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = False  # Desactiva la expiración del token
 jwt = JWTManager(app)
 
 # Registra los blueprints

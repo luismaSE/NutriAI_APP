@@ -14,11 +14,9 @@ def register():
     if not username or not password:
         return jsonify({'error': 'Username y password son obligatorios'}), 400
 
-    # Verifica si el usuario ya existe
     if UserModel.query.filter_by(username=username).first():
         return jsonify({'error': 'El nombre de usuario ya existe'}), 409
 
-    # Crea un nuevo usuario
     new_user = UserModel(username=username)
     new_user.set_password(password)
     db.session.add(new_user)
@@ -35,8 +33,9 @@ def login():
         if not username or not password:
             return jsonify({'error': 'Username and password are required'}), 400
         user = UserModel.query.filter_by(username=username).first()
-        if not user or not user.check_password(password):  # Asume que tienes un método check_password
+        if not user or not user.check_password(password):
             return jsonify({'error': 'Invalid credentials'}), 401
+        # Usar str(user.id) para asegurar que sub sea un string
         access_token = create_access_token(identity=str(user.id))
         return jsonify({'access_token': access_token}), 200
     except Exception as e:

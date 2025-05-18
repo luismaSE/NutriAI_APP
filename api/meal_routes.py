@@ -7,17 +7,24 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 meal_bp = Blueprint('meal', __name__)
 api_service = ApiService()
 
+def get_user_id_as_int():
+    """Convierte el user_id del token (string) a entero."""
+    try:
+        return int(get_jwt_identity())
+    except ValueError:
+        raise ValueError("ID de usuario inválido en el token")
+
 @meal_bp.route('/meals', methods=['GET'])
 @jwt_required()
 def get_user_meals():
     try:
-        user_id = get_jwt_identity()
+        user_id = get_user_id_as_int()
         meals = MealModel.query.filter_by(user_id=user_id).all()
         meals_data = []
         for meal in meals:
             meal_json = json.loads(meal.meal_data)
-            meal_json['created_at'] = meal.created_at.isoformat()  # Agregar desde la columna
-            meal_json['image_base64'] = meal.image_base64  # Agregar desde la columna
+            meal_json['created_at'] = meal.created_at.isoformat()
+            meal_json['image_base64'] = meal.image_base64
             meals_data.append(meal_json)
         print(meals_data)
         return jsonify({'meals': meals_data}), 200
@@ -28,7 +35,7 @@ def get_user_meals():
 @jwt_required()
 def new_meal():
     try:
-        user_id = get_jwt_identity()
+        user_id = get_user_id_as_int()
         if not request.json:
             return jsonify({'error': 'No se proporcionó ninguna comida'}), 400
         meal_data = request.json
@@ -41,7 +48,7 @@ def new_meal():
 @jwt_required()
 def get_meal(meal_id):
     try:
-        user_id = get_jwt_identity()
+        user_id = get_user_id_as_int()
         meal = api_service.get_meal(meal_id)
         if meal.user_id != user_id:
             return jsonify({'error': 'Acceso denegado'}), 403
@@ -53,7 +60,7 @@ def get_meal(meal_id):
 @jwt_required()
 def update_meal(meal_id):
     try:
-        user_id = get_jwt_identity()
+        user_id = get_user_id_as_int()
         meal = api_service.get_meal(meal_id)
         if meal.user_id != user_id:
             return jsonify({'error': 'Acceso denegado'}), 403
@@ -69,7 +76,7 @@ def update_meal(meal_id):
 @jwt_required()
 def update_ingredient(meal_id):
     try:
-        user_id = get_jwt_identity()
+        user_id = get_user_id_as_int()
         meal = api_service.get_meal(meal_id)
         if meal.user_id != user_id:
             return jsonify({'error': 'Acceso denegado'}), 403
@@ -86,7 +93,7 @@ def update_ingredient(meal_id):
 @jwt_required()
 def add_ingredient(meal_id):
     try:
-        user_id = get_jwt_identity()
+        user_id = get_user_id_as_int()
         meal = api_service.get_meal(meal_id)
         if meal.user_id != user_id:
             return jsonify({'error': 'Acceso denegado'}), 403
@@ -102,8 +109,10 @@ def add_ingredient(meal_id):
 @jwt_required()
 def remove_ingredient(meal_id):
     try:
-        user_id = get_jwt_identity()
+        user_id = get_user_id_as_int()
         meal = api_service.get_meal(meal_id)
+        print(f"User ID from token: {user_id} <{type(user_id)}>")
+        print(f"Meal User ID: {meal.user_id} <{type(meal.user_id)}>")
         if meal.user_id != user_id:
             return jsonify({'error': 'Acceso denegado'}), 403
         if not request.json:

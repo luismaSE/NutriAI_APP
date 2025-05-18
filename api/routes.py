@@ -35,7 +35,7 @@ def image():
 
 @api_bp.route('/get_macros', methods=['POST'])
 @jwt_required()
-def calculate_macros():
+def get_macros():
     try:
         user_id = get_jwt_identity()
         data = request.get_json()

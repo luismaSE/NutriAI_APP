@@ -29,6 +29,7 @@ def image():
 
         image_bytes = image.read()
         result = api_service.detect_foods(image_bytes, user_id)
+        print(result['detected_foods'])
         return jsonify(result), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -36,9 +37,10 @@ def image():
 @api_bp.route('/get_macros', methods=['POST'])
 @jwt_required()
 def get_macros():
-    try:
+    # try:
         user_id = get_jwt_identity()
         data = request.get_json()
+        print(data)
         if not data or 'query' not in data:
             return jsonify({'error': 'Se requiere una lista de consultas en "query"'}), 400
 
@@ -80,12 +82,12 @@ def get_macros():
         db.session.commit()
 
         return jsonify({'meal': meal.to_json()}), 200
-    except requests.RequestException as e:
-        return jsonify({'error': f'Error al consultar get_macros: {str(e)}'}), 500
-    except ValueError as ve:
-        return jsonify({'error': str(ve)}), 400
-    except Exception as e:
-        return jsonify({'error': f'Error al calcular macros: {str(e)}'}), 500
+    # except requests.RequestException as e:
+    #     return jsonify({'error': f'Error al consultar get_macros: {str(e)}'}), 500
+    # except ValueError as ve:
+    #     return jsonify({'error': str(ve)}), 400
+    # except Exception as e:
+    #     return jsonify({'error': f'Error al calcular macros: {str(e)}'}), 500
 
 @api_bp.route('/image_og', methods=['POST'])
 @jwt_required()
